@@ -2,87 +2,82 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Roblox Obby - Jump Edition</title>
+    <title>Roblox Zombie Survival VR</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
 </head>
 <body>
-    <a-scene fog="type: linear; color: #a3d5ff; far: 40; near: 0">
+    <a-scene fog="type: linear; color: #111; far: 30; near: 0">
         
         <a-entity id="rig" position="0 0 5">
             <a-entity id="camera" camera look-controls position="0 1.6 0">
-                <a-entity cursor="fuse: false" position="0 0 -1"
-                          geometry="primitive: ring; radiusInner: 0.01; radiusOuter: 0.015" 
-                          material="color: white; shader: flat">
+                <a-entity cursor="fuse: true; fuseTimeout: 500" position="0 0 -1"
+                          geometry="primitive: ring; radiusInner: 0.02; radiusOuter: 0.03" 
+                          material="color: #00FF00; shader: flat">
+                    <a-animation attribute="scale" begin="cursor-fusing" easing="ease-in" dur="500" from="1 1 1" to="0.1 0.1 0.1"></a-animation>
                 </a-entity>
             </a-entity>
         </a-entity>
 
-        <a-box position="0 -0.5 5" width="4" height="0.1" depth="4" color="#32CD32" material="shader: flat"></a-box>
-        <a-box position="0 -0.5 1" width="2" height="0.1" depth="2" color="#FFD700" material="shader: flat"></a-box>
-        <a-box position="0 -0.5 -3" width="2" height="0.1" depth="2" color="#FF4500" material="shader: flat"></a-box>
-        <a-box position="0 -0.5 -7" width="2" height="0.1" depth="2" color="#1E90FF" material="shader: flat"></a-box>
+        <a-plane rotation="-90 0 0" width="100" height="100" color="#222" material="shader: flat"></a-plane>
 
-        <a-sky color="#a3d5ff"></a-sky>
+        <a-entity id="zombie" position="0 0 -5" class="enemy">
+            <a-box position="0 1.5 0" width="0.8" height="1.8" depth="0.5" color="#4CAF50" material="shader: flat"></a-box> <a-box position="0 2.6 0" width="0.5" height="0.5" depth="0.5" color="#2E7D32" material="shader: flat"></a-box> <a-text id="zombie-hp" value="HP: 3" align="center" position="0 3.2 0" color="red" width="4"></a-text>
+        </a-entity>
+
+        <a-sky color="#000"></a-sky>
     </a-scene>
 
     <script>
         const rig = document.getElementById('rig');
         const camera = document.getElementById('camera');
+        const zombie = document.getElementById('zombie');
+        const hpText = document.getElementById('zombie-hp');
         
-        let velocityY = 0;
+        let zombieHP = 3;
         let isJumping = false;
-        const gravity = -0.01;
-        const jumpForce = 0.2;
+        let velocityY = 0;
 
-        // 【自動ロード】前回のクリア状況を確認
-        if(localStorage.getItem("obby_cleared")) {
-            console.log("おかえりなさい！");
-        }
+        // 【自動ロード】
+        const savedScore = localStorage.getItem("zombie_kill_count") || 0;
+        console.log("倒した数: " + savedScore);
 
-        // ジャンプのトリガー（画面タップ）
-        window.addEventListener('click', () => {
-            if (!isJumping) {
-                velocityY = jumpForce;
-                isJumping = true;
-            }
-        });
+        // ゾンビへの攻撃（カーソルで一定時間見つめると発動）
+        zombie.addEventListener('click', () => {
+            if (zombieHP > 0) {
+                zombieHP -= 1;
+                hpText.setAttribute('value', `HP: ${zombieHP}`);
+                
+                // ダメージ演出（赤くなる）
+                zombie.querySelectorAll('a-box').forEach(el => el.setAttribute('color', 'red'));
+                setTimeout(() => {
+                    if(zombieHP > 0) zombie.querySelectorAll('a-box').forEach(el => el.setAttribute('color', '#4CAF50'));
+                }, 200);
 
-        // ジャンプのトリガー（スマホを振る検知）
-        let lastY = 0;
-        window.addEventListener('devicemotion', (event) => {
-            let acc = event.accelerationIncludingGravity;
-            if (acc && Math.abs(acc.y - lastY) > 5) { // 縦に振ったら
-                if (!isJumping) {
-                    velocityY = jumpForce;
-                    isJumping = true;
+                if (zombieHP <= 0) {
+                    zombie.setAttribute('visible', 'false');
+                    alert("ゾンビを倒した！");
+                    // 【オートセーブ】
+                    localStorage.setItem("zombie_kill_count", Number(savedScore) + 1);
                 }
             }
-            lastY = acc.y;
         });
 
         function tick() {
-            // --- 移動処理 (前回と同じ：傾けると進む) ---
+            // 移動（前回のスマホ傾き移動）
             const rotation = camera.getAttribute('rotation');
             if (rotation.x < -20) {
-                const direction = new THREE.Vector3(0, 0, -0.06);
-                direction.applyQuaternion(camera.object3D.quaternion);
-                rig.object3D.position.x += direction.x;
-                rig.object3D.position.z += direction.z;
+                const dir = new THREE.Vector3(0, 0, -0.05).applyQuaternion(camera.object3D.quaternion);
+                rig.object3D.position.x += dir.x;
+                rig.object3D.position.z += dir.z;
             }
 
-            // --- ジャンプ・物理処理 ---
-            if (isJumping || rig.object3D.position.y > 0) {
-                velocityY += gravity;
-                rig.object3D.position.y += velocityY;
-
-                // 地面（高さ0）に着地
-                if (rig.object3D.position.y <= 0) {
-                    rig.object3D.position.y = 0;
-                    isJumping = false;
-                    velocityY = 0;
-                    // 【オートセーブ】着地するたびに位置を保存
-                    localStorage.setItem("last_pos", JSON.stringify(rig.object3D.position));
-                }
+            // ゾンビがゆっくり追いかけてくる
+            if (zombieHP > 0) {
+                const zPos = zombie.object3D.position;
+                const pPos = rig.object3D.position;
+                const angle = Math.atan2(pPos.x - zPos.x, pPos.z - zPos.z);
+                zPos.x += Math.sin(angle) * 0.01;
+                zPos.z += Math.cos(angle) * 0.01;
             }
 
             requestAnimationFrame(tick);
