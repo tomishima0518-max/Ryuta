@@ -2,86 +2,164 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>地震体験VR - 通路と避難体験</title>
-    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Bank Heist - Full Motion</title>
+    <style>
+        * { touch-action: none; -webkit-tap-highlight-color: transparent; user-select: none; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: #fff; }
+        #hud { position: absolute; top: 20px; left: 20px; z-index: 50; pointer-events: none; }
+        .bar-container { width: 120px; height: 8px; background: rgba(0,0,0,0.5); border: 1px solid #777; margin-bottom: 5px; border-radius: 4px; }
+        #s-fill { height: 100%; background: #00e5ff; width: 100%; }
+        #h-fill { height: 100%; background: #ff3d00; width: 100%; }
+        #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 30px; opacity: 0.6; }
+        #btn-fire { position: absolute; bottom: 40px; right: 40px; width: 100px; height: 100px; background: rgba(255,0,0,0.4); border: 3px solid #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; z-index: 100; }
+        #start-screen { position: absolute; inset: 0; background: #000; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 200; text-align: center; padding: 20px; }
+        #msg { position: absolute; top: 20%; width: 100%; text-align: center; font-weight: bold; color: #ffeb3b; text-shadow: 2px 2px #000; }
+    </style>
 </head>
 <body>
-    <a-scene webxr="optionalFeatures: hit-test, local-floor">
-        
-        <a-entity id="rig" position="0 0 5">
-            <a-entity id="camera" camera look-controls="reverseMouseDrag: false" position="0 1.6 0">
-                <a-entity cursor="fuse: true; fuseTimeout: 1000" position="0 0 -1"
-                          geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.01" 
-                          material="color: #FF5722; shader: flat">
-                    <a-entity geometry="primitive: box; width: 0.002; height: 0.03; depth: 0.002" material="color: #FF5722"></a-entity>
-                    <a-entity geometry="primitive: box; width: 0.03; height: 0.002; depth: 0.002" material="color: #FF5722"></a-entity>
-                </a-entity>
-            </a-entity>
-        </a-entity>
+    <div id="start-screen">
+        <h1>PHYSICAL MOTION HEIST</h1>
+        <p>実際に歩いて移動、向いて視点操作、<br>しゃがんで回避します。</p>
+        <button id="start-btn" style="padding:20px 40px; font-size:20px; background:#fff; border:none; border-radius:10px;">センサー許可して開始</button>
+    </div>
 
-        <a-box position="-1.5 1.5 0" src="https://cdn.aframe.io/a-painter/images/floor.jpg" repeat="1 10" width="0.1" height="3" depth="15"></a-box>
-        <a-box position="1.5 1.5 0" src="https://cdn.aframe.io/a-painter/images/floor.jpg" repeat="1 10" width="0.1" height="3" depth="15"></a-box>
-        <a-box position="0 3 0" color="#333" width="3" height="0.1" depth="15"></a-box>
-        <a-text value="前へ歩いて進んでください" align="center" position="0 2 2" rotation="0 0 0" color="white" width="4"></a-text>
+    <div id="hud">
+        🛡️ <div class="bar-container"><div id="s-fill"></div></div>
+        ❤️ <div class="bar-container"><div id="h-fill"></div></div>
+        <div id="cash">$0</div>
+    </div>
+    
+    <div id="msg">実際に歩いて銀行へ潜入せよ</div>
+    <div id="crosshair">+</div>
+    <div id="btn-fire">FIRE</div>
 
-        <a-entity id="quake-room" position="0 0 -7.5">
-            <a-cylinder id="trigger-area" radius="2" height="0.1" material="color: #FF0000; opacity: 0.3; transparent: true"></a-cylinder>
-            <a-text value="この部屋に入ると地震開始" align="center" position="0 2.5 0" color="#FF0000" width="6"></a-text>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- 基本設定 ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a0a);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const sun = new THREE.PointLight(0xffffff, 1.5, 50);
+        sun.position.set(0, 10, 0); scene.add(sun);
+
+        // --- 銀行内部の構築 ---
+        const colliders = [];
+        function addBox(w,h,d,x,y,z,col) {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), new THREE.MeshLambertMaterial({color:col}));
+            m.position.set(x,y,z); scene.add(m);
+            colliders.push(new THREE.Box3().setFromObject(m));
+        }
+        addBox(100, 0.5, 100, 0, -0.25, 0, 0x222222); // 床
+        addBox(1, 8, 30, -10, 4, 0, 0x888888); // 壁
+        addBox(1, 8, 30, 10, 4, 0, 0x888888);
+        addBox(20, 8, 1, 0, 4, -15, 0x888888); // 奥
+        const vault = new THREE.Mesh(new THREE.BoxGeometry(4, 5, 1), new THREE.MeshStandardMaterial({color:0x333333, metalness:1}));
+        vault.position.set(0, 2.5, -14.5); scene.add(vault);
+
+        // --- モーション制御変数 ---
+        let state = { hp:100, shield:100, money:0, crouching:false };
+        let lastAccel = 0;
+        let pStep = new THREE.Vector3(0, 1.6, 20); // 初期位置
+        camera.position.copy(pStep);
+
+        // --- センサー処理 ---
+        function onMotion(e) {
+            // 1. 歩行検知 (加速度の急激な変化)
+            const acc = e.accelerationIncludingGravity;
+            const totalAcc = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
+            const delta = Math.abs(totalAcc - lastAccel);
             
-            <a-box position="0 1.5 -2.5" color="#888" width="5" height="3" depth="0.1"></a-box> <a-box position="-2.5 1.5 0" color="#888" width="0.1" height="3" depth="5"></a-box> <a-box position="2.5 1.5 0" color="#888" width="0.1" height="3" depth="5"></a-box>  </a-entity>
-
-        <a-sky color="#111"></a-sky>
-        <a-grid width="50" height="50" material="color: #222"></a-grid>
-
-    </a-scene>
-
-    <script>
-        const rig = document.getElementById('rig');
-        const camera = document.getElementById('camera');
-        const trigger = document.getElementById('trigger-area');
-        let isQuaking = false;
-
-        // 毎フレームの監視処理
-        function tick() {
-            // プレイヤーのワールド座標を取得
-            const playerPos = new THREE.Vector3();
-            rig.object3D.getWorldPosition(playerPos);
-            
-            const triggerPos = new THREE.Vector3();
-            trigger.object3D.getWorldPosition(triggerPos);
-
-            // 部屋の中心（triggerPos）との距離を計算
-            const distance = playerPos.distanceTo(triggerPos);
-
-            // 部屋に入ったら地震開始
-            if (distance < 2.5 && !isQuaking) {
-                startEarthquake();
+            if (delta > 3) { // 歩いた（振動）を検知
+                const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+                dir.y = 0; // 地面と平行に移動
+                pStep.add(dir.multiplyScalar(0.2)); // 1歩進む
             }
+            lastAccel = totalAcc;
 
-            // 地震の揺れ演出
-            if (isQuaking) {
-                const intensity = 0.2; 
-                camera.object3D.position.x = (Math.random() - 0.5) * intensity;
-                camera.object3D.position.y = 1.6 + (Math.random() - 0.5) * intensity;
-                camera.object3D.position.z = (Math.random() - 0.5) * intensity;
+            // 2. しゃがみ検知 (加速度のZ軸、またはスマホの傾斜)
+            // デバイスが地面に対して低くなったり、急に下がった時の重力変化を利用
+            if (acc.y < 5) { // スマホを下げて屈んだ状態
+                state.crouching = true;
+            } else {
+                state.crouching = false;
             }
-
-            requestAnimationFrame(tick);
         }
 
-        function startEarthquake() {
-            isQuaking = true;
-            // オートセーブの代わりに進捗を記録
-            localStorage.setItem("earthquake_status", "experienced");
-            
-            setTimeout(() => {
-                isQuaking = false;
-                camera.object3D.position.set(0, 1.6, 0);
-                alert("激しい揺れが収まりました。無事ですか？");
-            }, 8000); // 8秒間揺れる
+        function onOrientation(e) {
+            // 3. 視点操作 (ジャイロ: 360°回転)
+            const alpha = e.alpha ? THREE.MathUtils.degToRad(e.alpha) : 0; // Z軸周り
+            const beta = e.beta ? THREE.MathUtils.degToRad(e.beta) : 0;   // X軸周り
+            const gamma = e.gamma ? THREE.MathUtils.degToRad(e.gamma) : 0; // Y軸周り
+
+            // デバイスの向きをカメラのクォータニオンに変換
+            const euler = new THREE.Euler(beta, alpha, -gamma, 'YXZ');
+            camera.quaternion.setFromEuler(euler);
         }
 
-        tick();
+        // 許可ボタン
+        document.getElementById('start-btn').onclick = async () => {
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                await DeviceMotionEvent.requestPermission();
+                await DeviceOrientationEvent.requestPermission();
+            }
+            window.addEventListener('devicemotion', onMotion);
+            window.addEventListener('deviceorientation', onOrientation);
+            document.getElementById('start-screen').style.display = 'none';
+        };
+
+        // 射撃ボタン
+        document.getElementById('btn-fire').ontouchstart = () => {
+            document.body.style.backgroundColor = "#550000";
+            setTimeout(() => document.body.style.backgroundColor = "#000", 50);
+            if(camera.position.distanceTo(vault.position) < 5) {
+                state.money += 5000;
+                document.getElementById('msg').innerText = "CASH STOLEN! ESCAPE!";
+            }
+        };
+
+        // --- 更新ループ ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 壁との衝突判定
+            let hit = false;
+            const pBox = new THREE.Box3().setFromCenterAndSize(pStep, new THREE.Vector3(1, 2, 1));
+            for(let c of colliders) if(pBox.intersectsBox(c)) hit = true;
+            if(!hit) camera.position.lerp(pStep, 0.1); 
+            else pStep.copy(camera.position); // ぶつかったら戻す
+
+            // しゃがみ高さのアニメーション
+            const targetH = state.crouching ? 0.7 : 1.6;
+            camera.position.y += (targetH - camera.position.y) * 0.1;
+
+            // シールド自動回復
+            if(state.crouching && state.shield < 100) state.shield += 0.2;
+
+            // UI
+            document.getElementById('s-fill').style.width = state.shield + "%";
+            document.getElementById('h-fill').style.width = state.hp + "%";
+            document.getElementById('cash').innerText = `$${state.money}`;
+
+            renderer.render(scene, camera);
+        }
+
+        // オートセーブ
+        setInterval(() => {
+            localStorage.setItem('FullMotion_Save', JSON.stringify({money: state.money}));
+        }, 5000);
+
+        animate();
     </script>
 </body>
 </html>
