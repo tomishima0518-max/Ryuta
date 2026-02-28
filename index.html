@@ -2,12 +2,13 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>地震体験VR - リアル歩行＆イベント型</title>
+    <title>地震体験VR - 通路と避難体験</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
 </head>
 <body>
     <a-scene webxr="optionalFeatures: hit-test, local-floor">
-        <a-entity id="rig" position="0 0 0">
+        
+        <a-entity id="rig" position="0 0 5">
             <a-entity id="camera" camera look-controls="reverseMouseDrag: false" position="0 1.6 0">
                 <a-entity cursor="fuse: true; fuseTimeout: 1000" position="0 0 -1"
                           geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.01" 
@@ -17,40 +18,69 @@
                 </a-entity>
             </a-entity>
         </a-entity>
-        <a-entity id="trigger-area" position="0 0 -4">
-            <a-cylinder radius="1" height="0.1" material="color: #FF0000; opacity: 0.5; transparent: true"></a-cylinder>
-            <a-text value="ここに入ると地震開始" align="center" position="0 1.5 0" color="white"></a-text>
-        </a-entity>
-        <a-sky color="#222"></a-sky>
-        <a-grid width="50" height="50" material="color: #444"></a-grid>
+
+        <a-box position="-1.5 1.5 0" src="https://cdn.aframe.io/a-painter/images/floor.jpg" repeat="1 10" width="0.1" height="3" depth="15"></a-box>
+        <a-box position="1.5 1.5 0" src="https://cdn.aframe.io/a-painter/images/floor.jpg" repeat="1 10" width="0.1" height="3" depth="15"></a-box>
+        <a-box position="0 3 0" color="#333" width="3" height="0.1" depth="15"></a-box>
+        <a-text value="前へ歩いて進んでください" align="center" position="0 2 2" rotation="0 0 0" color="white" width="4"></a-text>
+
+        <a-entity id="quake-room" position="0 0 -7.5">
+            <a-cylinder id="trigger-area" radius="2" height="0.1" material="color: #FF0000; opacity: 0.3; transparent: true"></a-cylinder>
+            <a-text value="この部屋に入ると地震開始" align="center" position="0 2.5 0" color="#FF0000" width="6"></a-text>
+            
+            <a-box position="0 1.5 -2.5" color="#888" width="5" height="3" depth="0.1"></a-box> <a-box position="-2.5 1.5 0" color="#888" width="0.1" height="3" depth="5"></a-box> <a-box position="2.5 1.5 0" color="#888" width="0.1" height="3" depth="5"></a-box>  </a-entity>
+
+        <a-sky color="#111"></a-sky>
+        <a-grid width="50" height="50" material="color: #222"></a-grid>
+
     </a-scene>
+
     <script>
         const rig = document.getElementById('rig');
         const camera = document.getElementById('camera');
         const trigger = document.getElementById('trigger-area');
         let isQuaking = false;
+
+        // 毎フレームの監視処理
         function tick() {
-            const pos = rig.object3D.position;
-            const targetPos = trigger.object3D.position;
-            const distance = Math.sqrt(Math.pow(pos.x - targetPos.x, 2) + Math.pow(pos.z - targetPos.z, 2));
-            if (distance < 1.2 && !isQuaking) { startEarthquake(); }
+            // プレイヤーのワールド座標を取得
+            const playerPos = new THREE.Vector3();
+            rig.object3D.getWorldPosition(playerPos);
+            
+            const triggerPos = new THREE.Vector3();
+            trigger.object3D.getWorldPosition(triggerPos);
+
+            // 部屋の中心（triggerPos）との距離を計算
+            const distance = playerPos.distanceTo(triggerPos);
+
+            // 部屋に入ったら地震開始
+            if (distance < 2.5 && !isQuaking) {
+                startEarthquake();
+            }
+
+            // 地震の揺れ演出
             if (isQuaking) {
-                const intensity = 0.15;
+                const intensity = 0.2; 
                 camera.object3D.position.x = (Math.random() - 0.5) * intensity;
                 camera.object3D.position.y = 1.6 + (Math.random() - 0.5) * intensity;
                 camera.object3D.position.z = (Math.random() - 0.5) * intensity;
             }
+
             requestAnimationFrame(tick);
         }
+
         function startEarthquake() {
             isQuaking = true;
+            // オートセーブの代わりに進捗を記録
+            localStorage.setItem("earthquake_status", "experienced");
+            
             setTimeout(() => {
                 isQuaking = false;
                 camera.object3D.position.set(0, 1.6, 0);
-                alert("避難成功！進捗を保存しました。");
-                localStorage.setItem("earthquake_cleared", "true");
-            }, 5000);
+                alert("激しい揺れが収まりました。無事ですか？");
+            }, 8000); // 8秒間揺れる
         }
+
         tick();
     </script>
 </body>
