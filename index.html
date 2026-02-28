@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Roblox Obby - センサー移動版</title>
+    <title>Roblox Obby - Jump Edition</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
 </head>
 <body>
@@ -18,15 +18,9 @@
         </a-entity>
 
         <a-box position="0 -0.5 5" width="4" height="0.1" depth="4" color="#32CD32" material="shader: flat"></a-box>
-        
         <a-box position="0 -0.5 1" width="2" height="0.1" depth="2" color="#FFD700" material="shader: flat"></a-box>
-        <a-box position="2 -0.5 -3" width="2" height="0.1" depth="2" color="#FF4500" material="shader: flat"></a-box>
-        <a-box position="-2 -0.5 -7" width="2" height="0.1" depth="2" color="#1E90FF" material="shader: flat"></a-box>
-
-        <a-entity id="goal-area" position="0 -0.5 -12">
-            <a-box width="5" height="0.1" depth="5" color="#FF69B4" material="shader: flat"></a-box>
-            <a-text value="GOAL!!" align="center" position="0 2 0" color="white" width="10"></a-text>
-        </a-entity>
+        <a-box position="0 -0.5 -3" width="2" height="0.1" depth="2" color="#FF4500" material="shader: flat"></a-box>
+        <a-box position="0 -0.5 -7" width="2" height="0.1" depth="2" color="#1E90FF" material="shader: flat"></a-box>
 
         <a-sky color="#a3d5ff"></a-sky>
     </a-scene>
@@ -34,43 +28,61 @@
     <script>
         const rig = document.getElementById('rig');
         const camera = document.getElementById('camera');
-        let speed = 0;
+        
+        let velocityY = 0;
+        let isJumping = false;
+        const gravity = -0.01;
+        const jumpForce = 0.2;
 
-        // オートセーブ/ロード
-        if(localStorage.getItem("obby_progress")) {
-            console.log("セーブデータを確認しました");
+        // 【自動ロード】前回のクリア状況を確認
+        if(localStorage.getItem("obby_cleared")) {
+            console.log("おかえりなさい！");
         }
 
+        // ジャンプのトリガー（画面タップ）
+        window.addEventListener('click', () => {
+            if (!isJumping) {
+                velocityY = jumpForce;
+                isJumping = true;
+            }
+        });
+
+        // ジャンプのトリガー（スマホを振る検知）
+        let lastY = 0;
+        window.addEventListener('devicemotion', (event) => {
+            let acc = event.accelerationIncludingGravity;
+            if (acc && Math.abs(acc.y - lastY) > 5) { // 縦に振ったら
+                if (!isJumping) {
+                    velocityY = jumpForce;
+                    isJumping = true;
+                }
+            }
+            lastY = acc.y;
+        });
+
         function tick() {
-            // カメラの傾き（ピッチ）を取得
+            // --- 移動処理 (前回と同じ：傾けると進む) ---
             const rotation = camera.getAttribute('rotation');
-            
-            // 【移動の仕組み】
-            // スマホを前に20度以上傾けると、向いている方向に進む
             if (rotation.x < -20) {
-                speed = 0.05; // 移動速度
-            } else {
-                speed = 0; // 平行に戻すと止まる
-            }
-
-            if (speed > 0) {
-                // 向いている方向ベクトルを計算
-                const direction = new THREE.Vector3(0, 0, -1);
+                const direction = new THREE.Vector3(0, 0, -0.06);
                 direction.applyQuaternion(camera.object3D.quaternion);
-                direction.y = 0; // 上下移動は制限
-                direction.normalize();
-                
-                // リグ（プレイヤー全体）を移動
-                rig.object3D.position.addScaledVector(direction, speed);
+                rig.object3D.position.x += direction.x;
+                rig.object3D.position.z += direction.z;
             }
 
-            // ゴール判定
-            const dist = rig.object3D.position.distanceTo(new THREE.Vector3(0, 0, -12));
-            if (dist < 2.5) {
-                localStorage.setItem("obby_progress", "cleared");
-                // 簡易的なゴール演出
-                rig.setAttribute('position', '0 0 5'); // スタートに戻す
-                alert("クリア！オートセーブしました。");
+            // --- ジャンプ・物理処理 ---
+            if (isJumping || rig.object3D.position.y > 0) {
+                velocityY += gravity;
+                rig.object3D.position.y += velocityY;
+
+                // 地面（高さ0）に着地
+                if (rig.object3D.position.y <= 0) {
+                    rig.object3D.position.y = 0;
+                    isJumping = false;
+                    velocityY = 0;
+                    // 【オートセーブ】着地するたびに位置を保存
+                    localStorage.setItem("last_pos", JSON.stringify(rig.object3D.position));
+                }
             }
 
             requestAnimationFrame(tick);
