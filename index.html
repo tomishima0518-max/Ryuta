@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Roblox Obby - Gravity Fixed</title>
+    <title>Roblox Obby - Solid Platforms</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
 </head>
 <body>
@@ -10,37 +10,37 @@
         
         <a-entity id="rig" position="0 0 5">
             <a-entity id="camera" camera look-controls position="0 1.6 0">
-                <a-text id="ui-msg" value="DON'T FALL!" align="center" position="0 0.1 -1.5" color="#FFD700" width="3"></a-text>
+                <a-text id="ui-msg" value="OBBY START" align="center" position="0 0.1 -1.5" color="#FFD700" width="3"></a-text>
             </a-entity>
         </a-entity>
 
         <a-entity id="platforms">
-            <a-box class="step" position="0 -0.5 5" width="4" height="0.1" depth="4" color="#32CD32"></a-box>
-            <a-box class="step" position="0 -0.5 1" width="2" height="0.1" depth="2" color="#FFD700"></a-box>
-            <a-box class="step" position="2 -0.5 -2" width="1.5" height="0.1" depth="1.5" color="#FF4500"></a-box>
-            <a-box class="step" position="-2 -0.5 -5" width="2" height="0.1" depth="2" color="#1E90FF"></a-box>
-            <a-box id="goal-plate" position="0 -0.5 -10" width="4" height="0.1" depth="4" color="#FF69B4"></a-box>
+            <a-box class="step" position="0 -0.5 5" width="4" height="1" depth="4" color="#32CD32" material="shader: flat"></a-box>
+            
+            <a-box class="step" position="0 -0.5 1" width="2" height="1" depth="2" color="#FFD700" material="shader: flat"></a-box>
+            <a-box class="step" position="2 -0.5 -2" width="1.5" height="1" depth="1.5" color="#FF4500" material="shader: flat"></a-box>
+            <a-box class="step" position="-2 -0.5 -5" width="2" height="1" depth="2" color="#1E90FF" material="shader: flat"></a-box>
+            
+            <a-box id="goal-plate" class="step" position="0 -0.5 -10" width="4" height="1" depth="4" color="#FF69B4" material="shader: flat"></a-box>
         </a-entity>
 
-        <a-sky color="#a3d5ff"></a-sky>
+        <a-sky color="#87CEEB"></a-sky>
     </a-scene>
 
     <script>
         const rig = document.getElementById('rig');
         const camera = document.getElementById('camera');
-        const platforms = document.querySelectorAll('.step, #goal-plate');
+        const platforms = document.querySelectorAll('.step');
         
         let velocityY = 0;
         let isJumping = false;
-        let onGround = true;
-        const gravity = -0.015;
-        const jumpForce = 0.25;
+        const gravity = -0.012;
+        const jumpForce = 0.22;
 
-        // ジャンプ
+        // タップでジャンプ
         window.addEventListener('mousedown', () => {
-            if (onGround) {
+            if (!isJumping) {
                 velocityY = jumpForce;
-                onGround = false;
                 isJumping = true;
             }
         });
@@ -49,53 +49,43 @@
             const pos = rig.object3D.position;
             const rot = camera.getAttribute('rotation');
 
-            // 1. 移動処理
+            // 1. 移動（お辞儀で進む）
             if (rot.x < -15) {
                 const dir = new THREE.Vector3(0, 0, -0.07).applyQuaternion(camera.object3D.quaternion);
                 pos.x += dir.x;
                 pos.z += dir.z;
             }
 
-            // 2. 地面判定（自分の下に足場があるか？）
-            let underFoot = false;
+            // 2. 物理計算（落下とジャンプ）
+            velocityY += gravity;
+            pos.y += velocityY;
+
+            // 3. 強力な着地判定
+            let hasLanded = false;
             platforms.forEach(p => {
                 const pPos = p.object3D.position;
-                const pSize = p.getAttribute('width') / 2 + 0.5; // 当たり判定の広さ
-                const pDepth = p.getAttribute('depth') / 2 + 0.5;
+                const pWidth = p.getAttribute('width') / 2;
+                const pDepth = p.getAttribute('depth') / 2;
                 
-                if (Math.abs(pos.x - pPos.x) < pSize && Math.abs(pos.z - pPos.z) < pDepth) {
-                    // 足場の高さに近く、かつ落下中なら着地
-                    if (pos.y >= -0.1 && pos.y <= 0.1 && velocityY <= 0) {
-                        underFoot = true;
+                // ブロックの範囲内にいるか？
+                if (Math.abs(pos.x - pPos.x) < pWidth && Math.abs(pos.z - pPos.z) < pDepth) {
+                    // 足場の表面（y=0）付近にいて、落下中の場合
+                    if (pos.y <= 0 && pos.y > -0.5 && velocityY < 0) {
+                        pos.y = 0;
+                        velocityY = 0;
+                        isJumping = false;
+                        hasLanded = true;
                     }
                 }
             });
 
-            // 3. 物理・重力処理
-            if (!underFoot || isJumping) {
-                onGround = false;
-                velocityY += gravity;
-                pos.y += velocityY;
-            } else {
-                onGround = true;
-                velocityY = 0;
-                pos.y = 0;
-                isJumping = false;
-            }
-
-            // 4. 落下リセット（奈落の底に落ちたら）
-            if (pos.y < -5) {
+            // 4. 落下リセット
+            if (pos.y < -4) {
                 pos.set(0, 0, 5); // スタートに戻る
                 velocityY = 0;
-                // オートセーブ（リセット回数などを記録可能）
-                localStorage.setItem("last_fail", new Date().getTime());
-                document.getElementById('ui-msg').setAttribute('value', "FALLEN!");
-                setTimeout(() => document.getElementById('ui-msg').setAttribute('value', ""), 1000);
-            }
-
-            // 5. ゴール判定
-            if (pos.distanceTo(new THREE.Vector3(0, 0, -10)) < 2) {
-                document.getElementById('ui-msg').setAttribute('value', "CLEAR!");
+                isJumping = false;
+                // オートセーブ：失敗を記録
+                localStorage.setItem("last_fail_pos", "stage1");
             }
 
             requestAnimationFrame(tick);
