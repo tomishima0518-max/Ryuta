@@ -2,23 +2,26 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Roblox Zombie VR - Wave & Upgrade</title>
+    <title>Roblox Zombie VR - Fixed</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
 </head>
 <body>
-    <a-scene fog="type: linear; color: #111; far: 40; near: 0">
+    <a-scene>
         <a-entity id="rig" position="0 0 5">
             <a-entity id="camera" camera look-controls position="0 1.6 0">
-                <a-entity id="reticle" geometry="primitive: ring; radiusInner: 0.01; radiusOuter: 0.015" material="color: lime; shader: flat" position="0 0 -1"></a-entity>
-                <a-entity id="weapon" raycaster="objects: .enemy; far: 6" cursor="fuse: false"></a-entity>
-                <a-text id="ui-hp" value="HP: 100" position="-0.8 0.6 -1" color="red" width="2"></a-text>
-                <a-text id="ui-wave" value="WAVE: 1" position="0.5 0.6 -1" color="white" width="2"></a-text>
-                <a-text id="ui-msg" value="" position="0 0 -1.5" align="center" color="yellow" width="3"></a-text>
+                <a-entity cursor="fuse: false" position="0 0 -1"
+                          geometry="primitive: ring; radiusInner: 0.01; radiusOuter: 0.015"
+                          material="color: #00FF00; shader: flat">
+                </a-entity>
+                
+                <a-text id="ui-hp" value="HP: 100" color="#FF0000" position="-0.6 0.4 -1" width="2"></a-text>
+                <a-text id="ui-wave" value="WAVE: 1" color="#FFFFFF" position="0.3 0.4 -1" width="2"></a-text>
+                <a-text id="ui-msg" value="START!" align="center" color="#FFFF00" position="0 0.1 -1" width="2.5"></a-text>
             </a-entity>
         </a-entity>
 
-        <a-plane rotation="-90 0 0" width="100" height="100" color="#222"></a-plane>
-        <a-sky color="#000"></a-sky>
+        <a-grid material="color: #555" width="50" height="50"></a-grid>
+        <a-sky color="#87CEEB"></a-sky>
 
         <a-entity id="zombie-container"></a-entity>
     </a-scene>
@@ -26,101 +29,99 @@
     <script>
         const rig = document.getElementById('rig');
         const camera = document.getElementById('camera');
-        const weapon = document.getElementById('weapon');
         const container = document.getElementById('zombie-container');
 
-        // --- ステータス ---
+        // ステータス設定
         let pHP = 100, pMaxHP = 100, pAtk = 1, pWave = 1;
-        let pAutoFire = false, pFireInterval = 1000, pRegen = 0, pBullets = 1;
+        let pAutoFire = false, pFireRate = 1000, pRegen = 0, pBullets = 1;
         let zombies = [], waveInProgress = false;
 
-        // --- アップグレードリスト ---
+        // アップグレード関数
         const upgrades = [
-            () => { pAutoFire = true; showMsg("AUTO FIRE UNLOCKED!"); },
-            () => { pMaxHP += 20; pHP += 20; showMsg("MAX HP UP!"); },
-            () => { pHP = Math.min(pMaxHP, pHP + 30); showMsg("MEDI-KIT: HP+30"); },
+            () => { pAutoFire = true; showMsg("AUTO FIRE!"); },
+            () => { pMaxHP += 20; pHP = pMaxHP; showMsg("MAX HP UP!"); },
+            () => { pHP = Math.min(pMaxHP, pHP + 30); showMsg("MEDI-KIT: +30"); },
             () => { pRegen += 1; showMsg("MEAT: REGEN+1"); },
             () => { pAtk += 1; showMsg("ATK UP!"); },
-            () => { pFireInterval = Math.max(200, pFireInterval - 200); showMsg("FIRE SPEED UP!"); },
-            () => { pBullets = Math.min(5, pBullets + 1); showMsg("BULLETS UP!"); },
-            () => { pMaxHP += 50; pHP += 50; pRegen += 1; showMsg("ENERGY DRINK!"); }
+            () => { pFireRate = Math.max(200, pFireRate - 200); showMsg("SPEED UP!"); },
+            () => { pBullets = Math.min(5, pBullets + 1); showMsg("BULLETS +1"); },
+            () => { pMaxHP += 50; pHP = pMaxHP; pRegen += 1; showMsg("ENERGY DRINK!"); }
         ];
 
         function showMsg(txt) {
-            const msg = document.getElementById('ui-msg');
-            msg.setAttribute('value', txt);
-            setTimeout(() => msg.setAttribute('value', ''), 2000);
+            document.getElementById('ui-msg').setAttribute('value', txt);
+            setTimeout(() => document.getElementById('ui-msg').setAttribute('value', ''), 2000);
         }
 
-        // --- ゾンビ生成 ---
+        // ゾンビ生成
         function spawnWave() {
             waveInProgress = true;
-            zombies = [];
             const count = pWave * 2;
             for(let i=0; i<count; i++) {
                 const z = document.createElement('a-entity');
                 z.setAttribute('class', 'enemy');
-                z.setAttribute('position', `${(Math.random()-0.5)*20} 0 ${(Math.random()-0.5)*20 - 10}`);
-                z.innerHTML = `<a-box position="0 1 0" width="0.8" height="2" color="#4CAF50" material="shader:flat"></a-box><a-text value="HP: 3" position="0 2.2 0" align="center" color="red" width="3"></a-text>`;
+                z.setAttribute('position', `${(Math.random()-0.5)*15} 0 ${(Math.random()-0.5)*15 - 5}`);
+                z.innerHTML = `
+                    <a-box position="0 1 0" width="0.8" height="2" color="#4CAF50"></a-box>
+                    <a-text class="z-hp" value="HP: 3" position="0 2.2 0" align="center" color="red" width="3"></a-text>
+                `;
                 z.hp = 2 + pWave;
+                z.addEventListener('mousedown', () => attackZombie(z)); // タップ攻撃
                 container.appendChild(z);
                 zombies.push(z);
             }
         }
 
-        // --- 攻撃処理 ---
-        function shoot() {
-            const intersects = weapon.components.raycaster.getIntersection(container);
-            if(intersects) {
-                const target = intersects.object.el.parentElement;
-                target.hp -= pAtk;
-                target.querySelector('a-text').setAttribute('value', `HP: ${target.hp}`);
-                if(target.hp <= 0) {
-                    target.remove();
-                    zombies = zombies.filter(z => z !== target);
-                }
+        function attackZombie(z) {
+            if(z.hp <= 0) return;
+            z.hp -= pAtk;
+            z.querySelector('.z-hp').setAttribute('value', `HP: ${z.hp}`);
+            if(z.hp <= 0) {
+                z.setAttribute('visible', 'false');
+                zombies = zombies.filter(item => item !== z);
+                z.remove();
             }
         }
 
-        window.addEventListener('mousedown', shoot);
-        setInterval(() => { if(pAutoFire) shoot(); }, pFireInterval);
-        setInterval(() => { pHP = Math.min(pMaxHP, pHP + pRegen); }, 1000);
+        // 自動回復
+        setInterval(() => { if(pHP < pMaxHP) pHP = Math.min(pMaxHP, pHP + pRegen); }, 1000);
 
         function tick() {
-            // 移動 (スマホお辞儀)
+            // 移動（スマホお辞儀で前進）
             const rot = camera.getAttribute('rotation');
             if (rot.x < -20) {
-                const dir = new THREE.Vector3(0, 0, -0.06).applyQuaternion(camera.object3D.quaternion);
-                rig.object3D.position.x += dir.x; rig.object3D.position.z += dir.z;
+                const dir = new THREE.Vector3(0, 0, -0.05).applyQuaternion(camera.object3D.quaternion);
+                rig.object3D.position.x += dir.x;
+                rig.object3D.position.z += dir.z;
             }
 
-            // ゾンビAI & ダメージ
+            // ゾンビの動き
             zombies.forEach(z => {
                 const zPos = z.object3D.position;
                 const pPos = rig.object3D.position;
                 const dist = zPos.distanceTo(pPos);
-                if(dist < 1.5) pHP -= 0.1; // 接触ダメージ
+                if(dist < 1.2) pHP -= 0.05; // 接触ダメージ
                 const angle = Math.atan2(pPos.x - zPos.x, pPos.z - zPos.z);
-                zPos.x += Math.sin(angle) * 0.02; zPos.z += Math.cos(angle) * 0.02;
+                zPos.x += Math.sin(angle) * 0.015;
+                zPos.z += Math.cos(angle) * 0.015;
             });
 
-            // ウェーブクリア判定
+            // UI更新 & ウェーブ終了判定
+            document.getElementById('ui-hp').setAttribute('value', `HP: ${Math.floor(pHP)}`);
+            document.getElementById('ui-wave').setAttribute('value', `WAVE: ${pWave}`);
+
             if(zombies.length === 0 && waveInProgress) {
                 waveInProgress = false;
                 pWave++;
                 const randUp = upgrades[Math.floor(Math.random() * upgrades.length)];
-                randUp();
+                randUp(); // アップグレード
                 setTimeout(spawnWave, 3000);
             }
 
-            // UI更新 & オートセーブ
-            document.getElementById('ui-hp').setAttribute('value', `HP: ${Math.floor(pHP)}`);
-            document.getElementById('ui-wave').setAttribute('value', `WAVE: ${pWave}`);
             if(pHP <= 0) { alert("GAME OVER"); location.reload(); }
-            localStorage.setItem("zombie_save", JSON.stringify({w:pWave, hp:pHP}));
-
             requestAnimationFrame(tick);
         }
+
         spawnWave();
         tick();
     </script>
