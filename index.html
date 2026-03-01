@@ -2,26 +2,39 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Roblox Obby - Solid Platforms</title>
+    <title>Ultimate Roblox Obby</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
 </head>
 <body>
     <a-scene fog="type: linear; color: #a3d5ff; far: 40; near: 0">
         
-        <a-entity id="rig" position="0 0 5">
+        <a-entity id="rig" position="0 0 8">
             <a-entity id="camera" camera look-controls position="0 1.6 0">
-                <a-text id="ui-msg" value="OBBY START" align="center" position="0 0.1 -1.5" color="#FFD700" width="3"></a-text>
+                <a-text id="ui-msg" value="DODGE GIMMICKS!" align="center" position="0 0.1 -1.5" color="#FFD700" width="3"></a-text>
             </a-entity>
         </a-entity>
 
-        <a-entity id="platforms">
-            <a-box class="step" position="0 -0.5 5" width="4" height="1" depth="4" color="#32CD32" material="shader: flat"></a-box>
-            
-            <a-box class="step" position="0 -0.5 1" width="2" height="1" depth="2" color="#FFD700" material="shader: flat"></a-box>
-            <a-box class="step" position="2 -0.5 -2" width="1.5" height="1" depth="1.5" color="#FF4500" material="shader: flat"></a-box>
-            <a-box class="step" position="-2 -0.5 -5" width="2" height="1" depth="2" color="#1E90FF" material="shader: flat"></a-box>
-            
-            <a-box id="goal-plate" class="step" position="0 -0.5 -10" width="4" height="1" depth="4" color="#FF69B4" material="shader: flat"></a-box>
+        <a-entity id="course">
+            <a-box class="step" position="0 -0.5 8" width="4" height="1" depth="4" color="#32CD32"></a-box>
+
+            <a-entity position="0 0 4">
+                <a-cylinder id="spinner" rotation="0 0 90" radius="0.1" height="6" color="#FF0000"
+                            animation="property: rotation; to: 0 360 90; loop: true; dur: 3000; easing: linear"></a-cylinder>
+                <a-box class="step" position="0 -0.5 0" width="2" height="1" depth="2" color="#7BC8A4"></a-box>
+            </a-entity>
+
+            <a-box id="vanishing" class="step" position="0 -0.5 0" width="2" height="1" depth="2" color="#FFD700"
+                   animation__fade="property: material.opacity; from: 1; to: 0; loop: true; dur: 2000; dir: alternate; easing: easeInOutSine"
+                   transparent="true"></a-box>
+
+            <a-box id="mover" class="step" position="0 -0.5 -4" width="2" height="1" depth="2" color="#1E90FF"
+                   animation="property: position; from: -3 -0.5 -4; to: 3 -0.5 -4; loop: true; dir: alternate; dur: 3000; easing: easeInOutQuad"></a-box>
+
+            <a-box id="lava" position="0 -2 -2" width="20" height="0.5" depth="25" color="#FF4500" material="opacity: 0.7; transparent: true"></a-box>
+
+            <a-box id="goal" class="step" position="0 -0.5 -10" width="4" height="1" depth="4" color="#FF69B4">
+                <a-text value="VICTORY!" align="center" position="0 2 0" width="10"></a-text>
+            </a-box>
         </a-entity>
 
         <a-sky color="#87CEEB"></a-sky>
@@ -30,66 +43,76 @@
     <script>
         const rig = document.getElementById('rig');
         const camera = document.getElementById('camera');
-        const platforms = document.querySelectorAll('.step');
-        
-        let velocityY = 0;
-        let isJumping = false;
-        const gravity = -0.012;
-        const jumpForce = 0.22;
+        const spinner = document.getElementById('spinner');
+        const vanishing = document.getElementById('vanishing');
 
-        // タップでジャンプ
+        let velocityY = 0, isJumping = false;
+        const gravity = -0.012, jumpForce = 0.22;
+
+        // オートセーブの読み込み
+        const lastWin = localStorage.getItem("obby_victory_count") || 0;
+        console.log("Total Wins: " + lastWin);
+
         window.addEventListener('mousedown', () => {
-            if (!isJumping) {
-                velocityY = jumpForce;
-                isJumping = true;
-            }
+            if (!isJumping) { velocityY = jumpForce; isJumping = true; }
         });
 
         function tick() {
             const pos = rig.object3D.position;
             const rot = camera.getAttribute('rotation');
 
-            // 1. 移動（お辞儀で進む）
+            // 移動
             if (rot.x < -15) {
                 const dir = new THREE.Vector3(0, 0, -0.07).applyQuaternion(camera.object3D.quaternion);
-                pos.x += dir.x;
-                pos.z += dir.z;
+                pos.x += dir.x; pos.z += dir.z;
             }
 
-            // 2. 物理計算（落下とジャンプ）
+            // 物理
             velocityY += gravity;
             pos.y += velocityY;
 
-            // 3. 強力な着地判定
             let hasLanded = false;
+            const platforms = document.querySelectorAll('.step');
+            
             platforms.forEach(p => {
                 const pPos = p.object3D.position;
-                const pWidth = p.getAttribute('width') / 2;
-                const pDepth = p.getAttribute('depth') / 2;
+                const pW = p.getAttribute('width') / 2;
+                const pD = p.getAttribute('depth') / 2;
                 
-                // ブロックの範囲内にいるか？
-                if (Math.abs(pos.x - pPos.x) < pWidth && Math.abs(pos.z - pPos.z) < pDepth) {
-                    // 足場の表面（y=0）付近にいて、落下中の場合
+                // 消える足場の透明度チェック（透明なときは乗れない）
+                const opacity = p.getAttribute('material') ? p.getAttribute('material').opacity : 1;
+
+                if (Math.abs(pos.x - pPos.x) < pW && Math.abs(pos.z - pPos.z) < pD && opacity > 0.5) {
                     if (pos.y <= 0 && pos.y > -0.5 && velocityY < 0) {
-                        pos.y = 0;
-                        velocityY = 0;
-                        isJumping = false;
-                        hasLanded = true;
+                        pos.y = 0; velocityY = 0; isJumping = false; hasLanded = true;
                     }
                 }
             });
 
-            // 4. 落下リセット
-            if (pos.y < -4) {
-                pos.set(0, 0, 5); // スタートに戻る
-                velocityY = 0;
-                isJumping = false;
-                // オートセーブ：失敗を記録
-                localStorage.setItem("last_fail_pos", "stage1");
+            // ギミック衝突判定 (回転する赤い棒に触れたらアウト)
+            const spinRot = spinner.getAttribute('rotation').y;
+            const distToSpinner = new THREE.Vector3(pos.x, pos.y + 1, pos.z).distanceTo(new THREE.Vector3(0, 0.5, 4));
+            if (distToSpinner < 1.0) resetPlayer("HIT RED BAR!");
+
+            // 落下・溶岩判定
+            if (pos.y < -3) resetPlayer("FALLEN!");
+
+            // ゴール判定
+            if (pos.z < -9 && Math.abs(pos.x) < 2) {
+                document.getElementById('ui-msg').setAttribute('value', "WINNER!");
+                localStorage.setItem("obby_victory_count", Number(lastWin) + 1);
             }
 
             requestAnimationFrame(tick);
         }
+
+        function resetPlayer(msg) {
+            rig.object3D.position.set(0, 0, 8);
+            velocityY = 0; isJumping = false;
+            document.getElementById('ui-msg').setAttribute('value', msg);
+            setTimeout(() => document.getElementById('ui-msg').setAttribute('value', ""), 1500);
+        }
+
         tick();
     </script>
 </body>
