@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Ultimate Roblox Obby</title>
+    <title>Easy Roblox Obby</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
 </head>
 <body>
@@ -10,7 +10,7 @@
         
         <a-entity id="rig" position="0 0 8">
             <a-entity id="camera" camera look-controls position="0 1.6 0">
-                <a-text id="ui-msg" value="DODGE GIMMICKS!" align="center" position="0 0.1 -1.5" color="#FFD700" width="3"></a-text>
+                <a-text id="ui-msg" value="SLOW SPINNER MODE" align="center" position="0 0.1 -1.5" color="#FFD700" width="3"></a-text>
             </a-entity>
         </a-entity>
 
@@ -18,22 +18,19 @@
             <a-box class="step" position="0 -0.5 8" width="4" height="1" depth="4" color="#32CD32"></a-box>
 
             <a-entity position="0 0 4">
-                <a-cylinder id="spinner" rotation="0 0 90" radius="0.1" height="6" color="#FF0000"
-                            animation="property: rotation; to: 0 360 90; loop: true; dur: 3000; easing: linear"></a-cylinder>
+                <a-cylinder id="spinner" rotation="0 0 90" radius="0.05" height="5" color="#FF0000"
+                            animation="property: rotation; to: 0 360 90; loop: true; dur: 5000; easing: linear"></a-cylinder>
                 <a-box class="step" position="0 -0.5 0" width="2" height="1" depth="2" color="#7BC8A4"></a-box>
             </a-entity>
 
             <a-box id="vanishing" class="step" position="0 -0.5 0" width="2" height="1" depth="2" color="#FFD700"
-                   animation__fade="property: material.opacity; from: 1; to: 0; loop: true; dur: 2000; dir: alternate; easing: easeInOutSine"
+                   animation__fade="property: material.opacity; from: 1; to: 0; loop: true; dur: 2500; dir: alternate; easing: easeInOutSine"
                    transparent="true"></a-box>
 
-            <a-box id="mover" class="step" position="0 -0.5 -4" width="2" height="1" depth="2" color="#1E90FF"
-                   animation="property: position; from: -3 -0.5 -4; to: 3 -0.5 -4; loop: true; dir: alternate; dur: 3000; easing: easeInOutQuad"></a-box>
-
-            <a-box id="lava" position="0 -2 -2" width="20" height="0.5" depth="25" color="#FF4500" material="opacity: 0.7; transparent: true"></a-box>
+            <a-box id="checkpoint" class="step" position="0 -0.5 -4" width="3" height="1" depth="3" color="#1E90FF"></a-box>
 
             <a-box id="goal" class="step" position="0 -0.5 -10" width="4" height="1" depth="4" color="#FF69B4">
-                <a-text value="VICTORY!" align="center" position="0 2 0" width="10"></a-text>
+                <a-text value="GOAL" align="center" position="0 2 0" width="10"></a-text>
             </a-box>
         </a-entity>
 
@@ -44,14 +41,10 @@
         const rig = document.getElementById('rig');
         const camera = document.getElementById('camera');
         const spinner = document.getElementById('spinner');
-        const vanishing = document.getElementById('vanishing');
-
+        
         let velocityY = 0, isJumping = false;
+        let respawnPos = {x: 0, y: 0, z: 8}; // 復活地点の初期値
         const gravity = -0.012, jumpForce = 0.22;
-
-        // オートセーブの読み込み
-        const lastWin = localStorage.getItem("obby_victory_count") || 0;
-        console.log("Total Wins: " + lastWin);
 
         window.addEventListener('mousedown', () => {
             if (!isJumping) { velocityY = jumpForce; isJumping = true; }
@@ -61,58 +54,49 @@
             const pos = rig.object3D.position;
             const rot = camera.getAttribute('rotation');
 
-            // 移動
             if (rot.x < -15) {
                 const dir = new THREE.Vector3(0, 0, -0.07).applyQuaternion(camera.object3D.quaternion);
                 pos.x += dir.x; pos.z += dir.z;
             }
 
-            // 物理
             velocityY += gravity;
             pos.y += velocityY;
 
             let hasLanded = false;
-            const platforms = document.querySelectorAll('.step');
-            
-            platforms.forEach(p => {
+            document.querySelectorAll('.step').forEach(p => {
                 const pPos = p.object3D.position;
                 const pW = p.getAttribute('width') / 2;
                 const pD = p.getAttribute('depth') / 2;
-                
-                // 消える足場の透明度チェック（透明なときは乗れない）
                 const opacity = p.getAttribute('material') ? p.getAttribute('material').opacity : 1;
 
                 if (Math.abs(pos.x - pPos.x) < pW && Math.abs(pos.z - pPos.z) < pD && opacity > 0.5) {
                     if (pos.y <= 0 && pos.y > -0.5 && velocityY < 0) {
                         pos.y = 0; velocityY = 0; isJumping = false; hasLanded = true;
+                        
+                        // チェックポイントを通過したら復活地点を更新
+                        if(p.id === "checkpoint") {
+                            respawnPos = {x: 0, y: 0, z: -4};
+                            localStorage.setItem("obby_spawn", JSON.stringify(respawnPos)); // オートセーブ
+                        }
                     }
                 }
             });
 
-            // ギミック衝突判定 (回転する赤い棒に触れたらアウト)
-            const spinRot = spinner.getAttribute('rotation').y;
+            // 衝突判定（判定距離を少し短く 0.8 に）
             const distToSpinner = new THREE.Vector3(pos.x, pos.y + 1, pos.z).distanceTo(new THREE.Vector3(0, 0.5, 4));
-            if (distToSpinner < 1.0) resetPlayer("HIT RED BAR!");
+            if (distToSpinner < 0.8) resetPlayer("OUCH!");
 
-            // 落下・溶岩判定
             if (pos.y < -3) resetPlayer("FALLEN!");
-
-            // ゴール判定
-            if (pos.z < -9 && Math.abs(pos.x) < 2) {
-                document.getElementById('ui-msg').setAttribute('value', "WINNER!");
-                localStorage.setItem("obby_victory_count", Number(lastWin) + 1);
-            }
 
             requestAnimationFrame(tick);
         }
 
         function resetPlayer(msg) {
-            rig.object3D.position.set(0, 0, 8);
+            rig.object3D.position.set(respawnPos.x, respawnPos.y, respawnPos.z);
             velocityY = 0; isJumping = false;
             document.getElementById('ui-msg').setAttribute('value', msg);
-            setTimeout(() => document.getElementById('ui-msg').setAttribute('value', ""), 1500);
+            setTimeout(() => document.getElementById('ui-msg').setAttribute('value', ""), 1000);
         }
-
         tick();
     </script>
 </body>
